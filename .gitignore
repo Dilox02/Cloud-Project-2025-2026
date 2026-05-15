@@ -5,6 +5,9 @@
 datasets/*
 !datasets/.gitkeep
 
+# Docker
+docker/
+
 # Python virtual environment
 venv/
 .venv/
