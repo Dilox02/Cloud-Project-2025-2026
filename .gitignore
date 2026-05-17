@@ -36,3 +36,9 @@ build/
 
 # Logs
 *.log
+
+# Java compiled files
+*.class
+
+# Django initial migrations
+**/migrations/0001_initial.py
