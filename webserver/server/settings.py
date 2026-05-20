@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import dj_database_url
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -21,10 +22,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-&a@08w!pui@#cpoefx&-j&hw0_1vzpybd05!uzo%zuix&^%=dt'
+SECRET_KEY = os.environ.get(
+    'SECRET_KEY',
+    'django-insecure-&a@08w!pui@#cpoefx&-j&hw0_1vzpybd05!uzo%zuix&^%=dt'
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = ['*']
 
@@ -38,6 +42,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
     'jobs',
 ]
 
@@ -75,7 +80,7 @@ WSGI_APPLICATION = 'server.wsgi.application'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
-    'default': dj_database_url.config(default='sqlite:///db.sqlite3')
+    'default': dj_database_url.parse(os.environ['DATABASE_URL'])
 }
 
 
@@ -120,3 +125,29 @@ STATICFILES_DIRS = [BASE_DIR / 'static']
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ── Django REST Framework ──────────────────────────────────────────────────────
+REST_FRAMEWORK = {
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 20,
+}
+
+
+# ── Hadoop / YARN ─────────────────────────────────────────────────────────────
+# URL del ResourceManager YARN (senza slash finale)
+YARN_RESOURCEMANAGER_URL = os.environ.get('YARN_RM_URL', 'http://10.1.1.136:8088')
+
+# Percorso root dell'installazione Hadoop nel container.
+# Deve corrispondere al volume montato in docker-compose.yml.
+# Il binario usato sarà: $HADOOP_HOME/bin/hadoop
+HADOOP_HOME = os.environ.get('HADOOP_HOME', '/opt/hadoop')
+
+# Percorso del JAR compilato nel container
+HADOOP_JAR_PATH = os.environ.get('HADOOP_JAR_PATH', '/app/cooccurrence-pmi.jar')
+
+# Directory base HDFS per gli output dei job (ogni job → hdfs:///output/job_<id>/)
+HDFS_OUTPUT_BASE = os.environ.get('HDFS_OUTPUT_BASE', 'hdfs:///output')
