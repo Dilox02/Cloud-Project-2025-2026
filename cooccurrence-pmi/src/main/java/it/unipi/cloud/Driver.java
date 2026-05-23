@@ -28,26 +28,33 @@ import java.net.URI;
  *   Job 3  stripes   →  pmi_output/         (PPMI pairs)
  *
  * Usage:
- *   hadoop jar cooccurrence-pmi.jar it.unipi.cloud.Driver <input> <output_base>
+ *   hadoop jar cooccurrence-pmi.jar <input> <output_base> [<window_size> <num_reducers>]
+ *
+ * Notes:
+ *   - <window_size> is read by StripesMapper at setup() time via job conf.
+ *   - <num_reducers> applies to Job 2 and Job 3; Job 1 is always 1 reducer.
  */
 public class Driver {
 
     public static void main(String[] args) throws Exception {
         // Validate command-line arguments
-        if (args.length != 2) {
-            System.err.println("Usage: Driver <input_path> <output_base_dir>");
+        if (args.length < 2 || args.length > 4) {
+            System.err.println("Usage: Driver <input_path> <output_base_dir> [<window_size> <num_reducers>]");
             System.exit(1);
         }
 
         // Define HDFS paths for input and intermediate/final outputs
         String inputPath    = args[0];
         String outputBase   = args[1];
+        int    windowSize   = args.length >= 3 ? Integer.parseInt(args[2]) : 2;
+        int    numReducers  = args.length >= 4 ? Integer.parseInt(args[3]) : 2;
         String wordCountsOut = outputBase + "/word_counts";
         String stripesOut    = outputBase + "/co_occurrence";
         String pmiOut        = outputBase + "/pmi_output";
 
         // Initialize Hadoop configuration
         Configuration conf = new Configuration();
+        conf.setInt("pmi.window.size", windowSize);
 
         // ----------------------------------------------------------------
         // Job 1 — Word Count + Corpus Statistics
@@ -87,7 +94,8 @@ public class Driver {
         // Set Mapper and Reducer classes for Job 2
         job2.setMapperClass(StripesMapper.class);
         job2.setReducerClass(StripesReducer.class);
-        
+        job2.setNumReduceTasks(numReducers);
+
         // Configure Map and Final output types using the custom StripeWritable map structure
         job2.setMapOutputKeyClass(Text.class);
         job2.setMapOutputValueClass(StripeWritable.class);
@@ -110,7 +118,8 @@ public class Driver {
         // Set Mapper and Reducer classes for Job 3
         job3.setMapperClass(PMIMapper.class);
         job3.setReducerClass(PMIReducer.class);
-        
+        job3.setNumReduceTasks(numReducers);
+
         // Configure Map and Final output types (Emits pairs and their double PMI score)
         job3.setMapOutputKeyClass(Text.class);
         job3.setMapOutputValueClass(DoubleWritable.class);

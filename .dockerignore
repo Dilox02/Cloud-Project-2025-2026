@@ -1,0 +1,12 @@
+book_*.txt
+datasets/
+**/__pycache__
+**/*.pyc
+**/.DS_Store
+__MACOSX/
+cooccurrence-pmi/target/classes/
+cooccurrence-pmi/target/test-classes/
+.git/
+.venv/
+venv/
+

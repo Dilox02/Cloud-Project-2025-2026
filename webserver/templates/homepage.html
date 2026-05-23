@@ -1,11 +1,58 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Home</title>
-</head>
-<body>
+{% extends "base.html" %}
+{% load static %}
 
-</body>
-</html>
+{% block title %}PMI Pipeline — Cloud Computing Project{% endblock %}
+{% block heading %}Distributed PMI Pipeline{% endblock %}
+{% block subheading %}Cascaded Hadoop MapReduce for co-occurrence and PMI computation over text corpora{% endblock %}
+
+{% block content %}
+<section>
+  <h2>Submit pipeline</h2>
+  <div id="flash"></div>
+  <form id="job-form">
+    <div class="field">
+      <label>Corpus</label>
+      <div class="datasets">
+        <label>
+          <input type="radio" name="dataset" value="small" checked
+                 data-path="hdfs:///input/project/small/book_0.5GB.txt" data-size="512">
+          <span class="opt"><strong>Small</strong><small>0.5 GB</small></span>
+        </label>
+        <label>
+          <input type="radio" name="dataset" value="medium"
+                 data-path="hdfs:///input/project/medium/book_1.0GB.txt" data-size="1024">
+          <span class="opt"><strong>Medium</strong><small>1.0 GB</small></span>
+        </label>
+        <label>
+          <input type="radio" name="dataset" value="large"
+                 data-path="hdfs:///input/project/large/book_1.5GB.txt" data-size="1536">
+          <span class="opt"><strong>Large</strong><small>1.5 GB</small></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Window size <span class="hint">(1–10)</span></label>
+      <input type="number" name="window_size" min="1" max="10" value="2">
+    </div>
+
+    <div class="field">
+      <label>Reducers <span class="hint">(1–64)</span></label>
+      <input type="number" name="num_reducers" min="1" max="64" value="2">
+    </div>
+
+    <button type="submit" id="submit-btn">Run Hadoop pipeline</button>
+  </form>
+</section>
+
+<section>
+  <h2>Recent pipelines</h2>
+  <div id="jobs-area">
+    <div class="empty">Loading…</div>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/app.js' %}"></script>
+{% endblock %}

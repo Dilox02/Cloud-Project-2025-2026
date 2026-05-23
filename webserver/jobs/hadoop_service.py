@@ -30,34 +30,30 @@ def _build_hadoop_command(job: Job) -> list:
 
     if job.engine == Job.Engine.HADOOP:
         # Main-Class is declared in the JAR manifest, so we do not pass it on the
-        # command line. Passing it would make Driver see 3 args and fail with
-        # "Usage: Driver <input_path> <output_base_dir>".
+        # command line. Args: <input> <output_base> <window_size> <num_reducers>.
         return [
             hadoop_bin,
             'jar', settings.HADOOP_JAR_PATH,
             job.dataset_path,
             output_base,
+            str(job.window_size),
+            str(job.num_reducers),
         ]
 
     raise NotImplementedError(f"Engine '{job.engine}' not yet supported.")
 
 
 def submit_and_wait(job: Job) -> None:
-    """Submits the Hadoop job and registers its YARN application id.
+    """Submits the Hadoop pipeline and tracks the job lifecycle in DB.
 
-    Responsibilities (single-writer for these fields):
-      - status = RUNNING + started_at when the subprocess is launched
-      - yarn_app_id + output_hdfs_path once the YARN application id is known
+    The Driver runs 3 MapReduce jobs sequentially (word count -> stripes -> PMI).
+    We stream the subprocess output line-by-line and keep yarn_app_id pointed at
+    the *currently running* app, so the poller always monitors the live stage.
 
-    The transition RUNNING -> COMPLETED/FAILED, completed_at and execution_time_s
-    are owned exclusively by the poller (sync_job_from_yarn), which reads YARN as
-    source of truth. This avoids the previous race where this thread and the
-    poller updated the same fields concurrently.
-
-    The only case in which this function still writes a terminal status is a
-    purely local failure (subprocess timeout, exception, or no YARN app id
-    captured): the poller cannot reconcile such jobs since there is no YARN
-    application to query.
+    Terminal transition COMPLETED/FAILED is set here when the subprocess returns
+    cleanly. If this thread is killed mid-run (e.g. Django StatReloader restart),
+    the poller's safety-net in sync_job_from_yarn reconciles the job from YARN
+    (finds pipeline apps started after job.submitted_at).
     """
     output_base = f"{settings.HDFS_OUTPUT_BASE}/job_{job.id}"
 
@@ -69,38 +65,50 @@ def submit_and_wait(job: Job) -> None:
         job.id, job.engine, job.dataset_path,
     )
 
+    log_tail: list = []
+    last_app_id: str | None = None
+    local_error: str | None = None
+    returncode: int | None = None
+
     try:
         cmd = _build_hadoop_command(job)
         logger.debug("Execution: %s", ' '.join(cmd))
 
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
-            timeout=7200,
+            bufsize=1,
         )
+        try:
+            for line in proc.stdout:
+                log_tail.append(line)
+                if len(log_tail) > 200:
+                    log_tail = log_tail[-200:]
+                m = _APP_ID_RE.search(line)
+                if m and m.group(0) != last_app_id:
+                    last_app_id = m.group(0)
+                    job.yarn_app_id = last_app_id
+                    job.save(update_fields=['yarn_app_id'])
+                    logger.info("Job #%d → YARN app ID: %s", job.id, last_app_id)
+            returncode = proc.wait(timeout=7200)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            raise
 
-        combined_log = proc.stdout + proc.stderr
-        match = _APP_ID_RE.search(combined_log)
-        if match:
-            job.yarn_app_id = match.group(0)
-            update_fields = ['yarn_app_id']
-            if proc.returncode == 0:
-                job.output_hdfs_path = f"{output_base}/pmi_output"
-                update_fields.append('output_hdfs_path')
-            job.save(update_fields=update_fields)
-            logger.info(
-                "Job #%d → YARN app ID: %s (status will be finalized by the poller)",
-                job.id, job.yarn_app_id,
-            )
+        if returncode == 0:
+            job.status = Job.Status.COMPLETED
+            job.completed_at = timezone.now()
+            job.output_hdfs_path = f"{output_base}/pmi_output"
+            job.save(update_fields=['status', 'completed_at', 'output_hdfs_path'])
+            logger.info("Job #%d COMPLETED (last YARN app: %s)", job.id, last_app_id)
             return
 
-        # No YARN app id captured: the poller cannot reconcile this job, so we
-        # mark it FAILED locally.
-        local_error = combined_log[-2000:].strip() or (
-            f"Subprocess exited with code {proc.returncode} without producing a YARN app id"
+        local_error = ''.join(log_tail).strip()[-2000:] or (
+            f"Subprocess exited with code {returncode}"
         )
-        logger.error("Job #%d FAILED locally without YARN app id\n%s", job.id, local_error)
+        logger.error("Job #%d FAILED (exit %s)\n%s", job.id, returncode, local_error)
 
     except subprocess.TimeoutExpired:
         local_error = "Job terminated for timeout (limit: 7200 s)"
@@ -116,5 +124,5 @@ def submit_and_wait(job: Job) -> None:
 
     job.status = Job.Status.FAILED
     job.completed_at = timezone.now()
-    job.error_msg = local_error
+    job.error_msg = local_error or "Unknown failure"
     job.save(update_fields=['status', 'completed_at', 'error_msg'])

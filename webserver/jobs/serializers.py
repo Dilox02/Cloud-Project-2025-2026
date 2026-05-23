@@ -6,8 +6,9 @@ They handle data serialization for outgoing responses, validation, and deseriali
 """
 class JobSerializer(serializers.ModelSerializer):
     """Complete serializer,it's used mainly when we want to retrieve all the job info with a GET request"""
-    
+
     duration_s = serializers.SerializerMethodField()
+    live       = serializers.SerializerMethodField()
 
     class Meta:
         model = Job
@@ -28,6 +29,7 @@ class JobSerializer(serializers.ModelSerializer):
             'peak_memory_mb',
             'output_hdfs_path',
             'duration_s',
+            'live',
         ]
 
 
@@ -35,6 +37,14 @@ class JobSerializer(serializers.ModelSerializer):
         """it calculates the duration of the job if it's completed"""
         if obj.started_at and obj.completed_at:
             return round((obj.completed_at - obj.started_at).total_seconds(), 2)
+        return None
+
+    def get_live(self, obj):
+        """Live progress from YARN (only for RUNNING jobs with a known app id)."""
+        if obj.status == Job.Status.RUNNING and obj.yarn_app_id:
+            from .yarn_monitor import get_live_progress
+            data = get_live_progress(obj.yarn_app_id)
+            return data or None
         return None
 
 
@@ -67,6 +77,8 @@ class JobCreateSerializer(serializers.ModelSerializer):
 class JobStatusSerializer(serializers.ModelSerializer):
     """Lightweight serializer,it's used for polling the job status"""
 
+    live = serializers.SerializerMethodField()
+
     class Meta:
         model = Job
         fields = [
@@ -79,4 +91,12 @@ class JobStatusSerializer(serializers.ModelSerializer):
             'execution_time_s',
             'output_hdfs_path',
             'error_msg',
+            'live',
         ]
+
+    def get_live(self, obj):
+        if obj.status == Job.Status.RUNNING and obj.yarn_app_id:
+            from .yarn_monitor import get_live_progress
+            data = get_live_progress(obj.yarn_app_id)
+            return data or None
+        return None
