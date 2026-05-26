@@ -73,6 +73,8 @@ label {
   gap: 8px;
 }
 
+.datasets.two-col { grid-template-columns: repeat(2, 1fr); }
+
 .datasets label {
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -149,6 +151,32 @@ th {
 .status-submitted { background: #f3f4f6; color: var(--muted); }
 .status-completed { background: #dcfce7; color: var(--ok); }
 .status-failed    { background: #fee2e2; color: var(--err); }
+
+.engine {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.engine-hadoop { background: #fde68a; color: #92400e; }
+.engine-spark  { background: #e0e7ff; color: #3730a3; }
+
+.job-btn {
+  display: inline-block;
+  padding: 4px 10px;
+  background: var(--accent);
+  color: white;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+.job-btn:hover { opacity: 0.85; }
 
 code, .mono {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;

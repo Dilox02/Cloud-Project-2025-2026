@@ -43,7 +43,7 @@ class JobSerializer(serializers.ModelSerializer):
         """Live progress from YARN (only for RUNNING jobs with a known app id)."""
         if obj.status == Job.Status.RUNNING and obj.yarn_app_id:
             from .yarn_monitor import get_live_progress
-            data = get_live_progress(obj.yarn_app_id)
+            data = get_live_progress(obj.yarn_app_id, obj.engine)
             return data or None
         return None
 
@@ -97,6 +97,6 @@ class JobStatusSerializer(serializers.ModelSerializer):
     def get_live(self, obj):
         if obj.status == Job.Status.RUNNING and obj.yarn_app_id:
             from .yarn_monitor import get_live_progress
-            data = get_live_progress(obj.yarn_app_id)
+            data = get_live_progress(obj.yarn_app_id, obj.engine)
             return data or None
         return None

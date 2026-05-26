@@ -26,17 +26,19 @@ _STAGE_INDEX = {
     'PMI Computation':        3,
 }
 _PIPELINE_STAGES = 3
+_SPARK_TOTAL_JOBS = 3  # actions emitted by spark-pmi/pmi/pipeline.py: sum, collectAsMap, save_pmi
 
 
-def get_live_progress(yarn_app_id: str):
-    """Return live progress info for the currently running YARN app.
-
-    Single-stage progress comes straight from YARN (`progress` field, 0-100).
-    Pipeline progress combines the stage index and the current stage progress:
-      ((stage_index - 1) * 100 + yarn_progress) / 3
-    """
+def get_live_progress(yarn_app_id: str, engine: str = Job.Engine.HADOOP):
+    """Dispatches to the engine-specific progress fetcher."""
     if not yarn_app_id:
         return {}
+    if engine == Job.Engine.SPARK:
+        return _get_spark_progress(yarn_app_id)
+    return _get_hadoop_progress(yarn_app_id)
+
+
+def _get_hadoop_progress(yarn_app_id: str):
     info = get_yarn_app_info(yarn_app_id)
     if not info:
         return {}
@@ -53,6 +55,44 @@ def get_live_progress(yarn_app_id: str):
         'stage_total':       _PIPELINE_STAGES,
         'pipeline_progress': pipeline_progress,
         'yarn_state':        info.get('state', ''),
+    }
+
+
+def _get_spark_progress(yarn_app_id: str):
+    rm_url = getattr(settings, 'YARN_RESOURCEMANAGER_URL', 'http://localhost:8088')
+    base = f"{rm_url}/proxy/{yarn_app_id}/api/v1/applications/{yarn_app_id}"
+    try:
+        spark_jobs = requests.get(f"{base}/jobs", timeout=5,
+                                  headers={'Accept': 'application/json'}).json()
+        stages = requests.get(f"{base}/stages", timeout=5,
+                              headers={'Accept': 'application/json'}).json()
+    except requests.RequestException as exc:
+        logger.warning("Spark REST API not reachable for %s: %s", yarn_app_id, exc)
+        return {}
+
+    completed = sum(1 for j in spark_jobs if j.get('status') == 'SUCCEEDED')
+    running   = next((j for j in spark_jobs if j.get('status') == 'RUNNING'), None)
+    total = max(len(spark_jobs), _SPARK_TOTAL_JOBS)
+
+    job_progress = 0.0
+    stage_name = 'idle'
+    if running:
+        n_tasks = running.get('numTasks', 0)
+        n_done  = running.get('numCompletedTasks', 0)
+        if n_tasks:
+            job_progress = round(n_done / n_tasks * 100, 1)
+        active = next((s for s in stages if s.get('status') == 'ACTIVE'), None)
+        src = active or running
+        stage_name = (src.get('name') or '').split(' at ')[0] or 'running'
+
+    pipeline_progress = round((completed * 100 + job_progress) / total, 1)
+    return {
+        'progress':          job_progress,
+        'stage_name':        stage_name,
+        'stage_index':       completed + (1 if running else 0),
+        'stage_total':       total,
+        'pipeline_progress': pipeline_progress,
+        'yarn_state':        'RUNNING',
     }
 
 
@@ -122,10 +162,12 @@ def sync_job_from_yarn(job: Job):
     update_fields = []
     yarn_name  = info.get('name', '')
     yarn_state = info.get('state', '')
+    is_hadoop  = job.engine == Job.Engine.HADOOP
 
-    # Safety-net: if the tracked app finished but wasn't the final PMI stage,
-    # hop yarn_app_id to the latest pipeline app started after job.submitted_at.
-    if yarn_state == 'FINISHED' and yarn_name != 'PMI Computation':
+    # Stage-hopping only applies to the Hadoop cascade (3 sequential MR apps).
+    # Spark runs the whole DAG inside a single YARN app, so its yarn_app_id is
+    # final from submission and we skip both the hop and the PMI-stage check.
+    if is_hadoop and yarn_state == 'FINISHED' and yarn_name != 'PMI Computation':
         newer = _find_latest_pipeline_app(job.submitted_at)
         if newer and newer != job.yarn_app_id:
             logger.info("Job #%d: poller advancing yarn_app_id %s -> %s",
@@ -148,9 +190,9 @@ def sync_job_from_yarn(job: Job):
     if yarn_state == 'FINISHED' and yarn_final == 'FAILED':
         new_status = Job.Status.FAILED
 
-    # Only the last stage advances the job to COMPLETED; intermediate FINISHEDs
-    # keep the job RUNNING (the safety-net above will eventually hop to PMI).
-    if new_status == Job.Status.COMPLETED and yarn_name != 'PMI Computation':
+    # Hadoop-only: an intermediate stage FINISHED keeps the job RUNNING until
+    # the final PMI Computation stage reports completion.
+    if is_hadoop and new_status == Job.Status.COMPLETED and yarn_name != 'PMI Computation':
         new_status = Job.Status.RUNNING
 
     if job.status != new_status:

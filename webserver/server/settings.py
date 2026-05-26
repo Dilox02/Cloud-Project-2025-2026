@@ -137,17 +137,17 @@ REST_FRAMEWORK = {
 }
 
 
-# ── Hadoop / YARN ─────────────────────────────────────────────────────────────
-# URL del ResourceManager YARN (senza slash finale)
+# Hadoop / YARN 
+# YARN Resource Manager URL
 YARN_RESOURCEMANAGER_URL = os.environ.get('YARN_RM_URL', 'http://10.1.1.136:8088')
-
-# Percorso root dell'installazione Hadoop nel container.
-# Deve corrispondere al volume montato in docker-compose.yml.
-# Il binario usato sarà: $HADOOP_HOME/bin/hadoop
 HADOOP_HOME = os.environ.get('HADOOP_HOME', '/opt/hadoop')
-
-# Percorso del JAR compilato nel container
 HADOOP_JAR_PATH = os.environ.get('HADOOP_JAR_PATH', '/app/cooccurrence-pmi.jar')
 
-# Directory base HDFS per gli output dei job (ogni job → hdfs:///output/job_<id>/)
+# HDFS output base directory for jobs (each job → hdfs:///output/job_<id>/)
 HDFS_OUTPUT_BASE = os.environ.get('HDFS_OUTPUT_BASE', 'hdfs:///output')
+
+
+# Spark 
+# the binary used will be: $SPARK_HOME/bin/spark-submit
+SPARK_HOME = os.environ.get('SPARK_HOME', '/opt/spark')
+SPARK_PMI_DIR = os.environ.get('SPARK_PMI_DIR', '/app/spark-pmi')

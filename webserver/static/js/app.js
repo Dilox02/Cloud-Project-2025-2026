@@ -11,9 +11,10 @@ function showFlash(msg, ok) {
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const ds = form.querySelector('input[name=dataset]:checked');
+  const ds     = form.querySelector('input[name=dataset]:checked');
+  const engine = form.querySelector('input[name=engine]:checked').value;
   const payload = {
-    engine: 'hadoop',
+    engine,
     dataset_path:    ds.dataset.path,
     dataset_size_mb: parseInt(ds.dataset.size, 10),
     window_size:     parseInt(form.window_size.value, 10),
@@ -28,7 +29,7 @@ form.addEventListener('submit', async (e) => {
     });
     const data = await r.json();
     if (r.ok) {
-      showFlash(`Pipeline #${data.id} submitted on ${ds.value} corpus`, true);
+      showFlash(`${engine.toUpperCase()} pipeline #${data.id} submitted on ${ds.value} corpus`, true);
       refreshJobs();
     } else {
       showFlash('Validation error: ' + JSON.stringify(data), false);
@@ -79,24 +80,29 @@ async function refreshJobs() {
       area.innerHTML = '<div class="empty">No pipelines submitted yet.</div>';
       return;
     }
-    const rows = jobs.map(j => `
+    const rows = jobs.map(j => {
+      const done = j.status === 'completed';
+      const url   = done ? `/api/jobs/${j.id}/` : `/api/jobs/${j.id}/status/`;
+      const label = done ? 'Get' : 'Status';
+      return `
       <tr>
         <td><code>#${j.id}</code></td>
+        <td><span class="engine engine-${j.engine}">${j.engine}</span></td>
         <td>${shortPath(j.dataset_path)}</td>
-        <td>ws=${j.window_size}, r=${j.num_reducers}</td>
+        <td>ws=${j.window_size}, ${j.engine === 'spark' ? 'p' : 'r'}=${j.num_reducers}</td>
         <td><span class="status status-${j.status}">${j.status}</span></td>
         <td>${renderProgress(j.live)}</td>
         <td class="mono">${j.yarn_app_id || '—'}</td>
         <td>${fmtDuration(j.duration_s)}</td>
-        <td class="mono">${j.output_hdfs_path ? shortPath(j.output_hdfs_path) : '—'}</td>
-      </tr>
-    `).join('');
+        <td><a class="job-btn" href="${url}" target="_blank">${label}</a></td>
+      </tr>`;
+    }).join('');
     area.innerHTML = `
       <table>
         <thead>
           <tr>
-            <th>ID</th><th>Corpus</th><th>Params</th><th>Status</th>
-            <th>Progress</th><th>YARN app</th><th>Duration</th><th>Output</th>
+            <th>ID</th><th>Engine</th><th>Corpus</th><th>Params</th><th>Status</th>
+            <th>Progress</th><th>YARN app</th><th>Duration</th><th></th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>

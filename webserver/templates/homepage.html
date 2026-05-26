@@ -11,6 +11,20 @@
   <div id="flash"></div>
   <form id="job-form">
     <div class="field">
+      <label>Engine</label>
+      <div class="datasets two-col">
+        <label>
+          <input type="radio" name="engine" value="hadoop" checked>
+          <span class="opt"><strong>Hadoop</strong><small>MapReduce</small></span>
+        </label>
+        <label>
+          <input type="radio" name="engine" value="spark">
+          <span class="opt"><strong>Spark</strong><small>RDD pipeline</small></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="field">
       <label>Corpus</label>
       <div class="datasets">
         <label>
@@ -37,11 +51,11 @@
     </div>
 
     <div class="field">
-      <label>Reducers <span class="hint">(1–64)</span></label>
+      <label>Reducers / partitions <span class="hint">(1–64)</span></label>
       <input type="number" name="num_reducers" min="1" max="64" value="2">
     </div>
 
-    <button type="submit" id="submit-btn">Run Hadoop pipeline</button>
+    <button type="submit" id="submit-btn">Run pipeline</button>
   </form>
 </section>
 
