@@ -32,10 +32,11 @@ class Job(models.Model):
     started_at    = models.DateTimeField(null=True, blank=True)
     completed_at  = models.DateTimeField(null=True, blank=True)
 
-    # metrics 
+    # metrics
     execution_time_s = models.FloatField(null=True, blank=True)
     peak_memory_mb   = models.FloatField(null=True, blank=True)
     output_hdfs_path = models.CharField(max_length=300, blank=True)
+
 
     class Meta:
         ordering = ['-submitted_at']

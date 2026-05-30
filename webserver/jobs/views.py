@@ -77,3 +77,18 @@ class JobListByStatusView(generics.ListAPIView):
         if status not in valid:
             return Job.objects.none()
         return Job.objects.filter(status=status)
+
+
+class JobCompareDataView(generics.ListAPIView):
+    """
+    GET /api/jobs/compare/ -> all completed jobs, unpaginated, for the compare page
+    """
+    serializer_class = JobSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        return Job.objects.filter(status=Job.Status.COMPLETED)
+
+
+def compare_page(request):
+    return render(request, 'compare.html')

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Compare Pipelines — Cloud Project{% endblock %}
+{% block heading %}Pipeline Comparison{% endblock %}
+{% block subheading %}Select completed jobs from the sidebar to compare metrics side by side{% endblock %}
+{% block nav_compare %}active{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="compare-layout">
+  <aside class="compare-sidebar">
+    <h2>Completed Jobs</h2>
+    <div id="job-list"><div class="empty">Loading…</div></div>
+    <button id="select-all-btn" style="margin-top:12px;width:100%;display:none">Select all</button>
+  </aside>
+
+  <div class="compare-charts">
+    <div id="no-selection" class="compare-empty">
+      <p>Select one or more jobs from the sidebar to see charts.</p>
+    </div>
+    <div id="charts-area" style="display:none">
+      <section>
+        <h2>Total Duration (s) <span class="tip" data-tip="completed_at − submitted_at. Total wall-clock time perceived by the user: includes YARN queue wait, process startup, and actual compute.">?</span></h2>
+        <canvas id="chart-time" height="120"></canvas>
+      </section>
+      <section>
+        <h2>Avg Allocated Memory (MB) <span class="tip" data-tip="max(memorySeconds ÷ elapsedSeconds) across YARN stages. For Hadoop: peak of the average allocated memory over the 3 MapReduce stages. For Spark: from the single YARN app.">?</span></h2>
+        <canvas id="chart-mem" height="120"></canvas>
+      </section>
+      <section>
+        <h2>Throughput (MB/s) <span class="tip" data-tip="dataset_size_mb ÷ execution_time_s. Corpus MB processed per second, computed over the compute time (completed_at − started_at).">?</span></h2>
+        <canvas id="chart-throughput" height="120"></canvas>
+      </section>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/compare.js' %}"></script>
+{% endblock %}

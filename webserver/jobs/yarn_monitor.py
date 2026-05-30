@@ -137,20 +137,26 @@ def _find_latest_pipeline_app(submitted_at) -> str:
     return pipeline[-1].get('id', '')
 
 
+def _accumulate_stage(job: Job, elapsed_ms: int, mem_seconds: int, update_fields: set):
+    """Track peak average memory across YARN stages (max, idempotent)."""
+    if mem_seconds and elapsed_ms:
+        stage_avg_mb = round(mem_seconds / max(elapsed_ms / 1000.0, 1), 1)
+        if job.peak_memory_mb is None or stage_avg_mb > job.peak_memory_mb:
+            job.peak_memory_mb = stage_avg_mb
+            update_fields.add('peak_memory_mb')
+
+
 def sync_job_from_yarn(job: Job):
     """Updates the Job record with the most recent information from YARN.
 
     Returns True if at least one field has changed, False otherwise.
 
-    Acts as the safety-net of the lifecycle: the poller is the authoritative
-    source of the COMPLETED/FAILED transition. submit_and_wait only sets
-    yarn_app_id and intermediate state during a live run; if its thread dies
-    (e.g. Django StatReloader restart) the poller still drives the job to
-    its terminal state by:
-      - actively switching yarn_app_id to the latest pipeline app on YARN
-        when the current one is FINISHED but is an intermediate stage,
-      - marking COMPLETED only when the *last* stage (PMI Computation)
-        reports FINISHED/SUCCEEDED.
+    Drives job lifecycle and updates peak_memory_mb across stages.
+    execution_time_s and duration_s are computed by the serializer.
+
+    Hadoop: captures memorySeconds of each stage on hop, keeps the max
+    average across stages as peak_memory_mb.
+    Spark: single YARN app, peak_memory_mb set on completion.
     """
     if not job.yarn_app_id:
         return False
@@ -159,21 +165,24 @@ def sync_job_from_yarn(job: Job):
     if not info:
         return False
 
-    update_fields = []
+    update_fields = set()
     yarn_name  = info.get('name', '')
     yarn_state = info.get('state', '')
     is_hadoop  = job.engine == Job.Engine.HADOOP
 
-    # Stage-hopping only applies to the Hadoop cascade (3 sequential MR apps).
-    # Spark runs the whole DAG inside a single YARN app, so its yarn_app_id is
-    # final from submission and we skip both the hop and the PMI-stage check.
+    # Stage-hopping (Hadoop only): before advancing to the next YARN app,
+    # fold the completed stage's metrics into the running totals.
     if is_hadoop and yarn_state == 'FINISHED' and yarn_name != 'PMI Computation':
+        stage_elapsed_ms  = info.get('elapsedTime', 0) or 0
+        stage_mem_seconds = info.get('memorySeconds', 0) or 0
+        _accumulate_stage(job, stage_elapsed_ms, stage_mem_seconds, update_fields)
+
         newer = _find_latest_pipeline_app(job.submitted_at)
         if newer and newer != job.yarn_app_id:
             logger.info("Job #%d: poller advancing yarn_app_id %s -> %s",
                         job.id, job.yarn_app_id, newer)
             job.yarn_app_id = newer
-            update_fields.append('yarn_app_id')
+            update_fields.add('yarn_app_id')
             refreshed = get_yarn_app_info(newer)
             if refreshed:
                 info       = refreshed
@@ -181,46 +190,36 @@ def sync_job_from_yarn(job: Job):
                 yarn_state = info.get('state', '')
 
     yarn_final  = info.get('finalStatus', '')
-    elapsed_ms  = info.get('elapsedTime', 0)#total execution time in ms
-    mem_seconds = info.get('memorySeconds', 0) #memory allocated x time in seconds (belongs to YARN :P)
-    #to obtain avg memory we divide mem_seconds by the time in seconds
+    elapsed_ms  = info.get('elapsedTime', 0) or 0
+    mem_seconds = info.get('memorySeconds', 0) or 0
 
     new_status = _YARN_STATE_MAP.get(yarn_state, Job.Status.RUNNING)
 
     if yarn_state == 'FINISHED' and yarn_final == 'FAILED':
         new_status = Job.Status.FAILED
 
-    # Hadoop-only: an intermediate stage FINISHED keeps the job RUNNING until
-    # the final PMI Computation stage reports completion.
     if is_hadoop and new_status == Job.Status.COMPLETED and yarn_name != 'PMI Computation':
         new_status = Job.Status.RUNNING
 
     if job.status != new_status:
         job.status = new_status
-        update_fields.append('status')
+        update_fields.add('status')
 
         if new_status in (Job.Status.COMPLETED, Job.Status.FAILED):
             job.completed_at = timezone.now()
-            update_fields.append('completed_at')
+            update_fields.add('completed_at')
 
         if new_status == Job.Status.COMPLETED and not job.output_hdfs_path:
             job.output_hdfs_path = f"{settings.HDFS_OUTPUT_BASE}/job_{job.id}/pmi_output"
-            update_fields.append('output_hdfs_path')
+            update_fields.add('output_hdfs_path')
 
-    if elapsed_ms and job.execution_time_s is None:
-        job.execution_time_s = round(elapsed_ms / 1000.0, 2) #ms to s
-        update_fields.append('execution_time_s')
-
-    if mem_seconds and elapsed_ms:
-        job.peak_memory_mb = round(mem_seconds / max(elapsed_ms / 1000.0, 1), 1)#avg memory in MB
-        update_fields.append('peak_memory_mb')
+    # On completion, fold the final stage's metrics and seal the values.
+    if new_status == Job.Status.COMPLETED:
+        _accumulate_stage(job, elapsed_ms, mem_seconds, update_fields)
 
     if update_fields:
-        job.save(update_fields=update_fields)
-        logger.info(
-            "Job #%d: state=%s (fields: %s)",
-            job.id, new_status, update_fields,
-        )
+        job.save(update_fields=list(update_fields))
+        logger.info("Job #%d: state=%s (fields: %s)", job.id, new_status, update_fields)
         return True
 
     return False

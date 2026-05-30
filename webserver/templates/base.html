@@ -10,8 +10,16 @@
 </head>
 <body>
   <header>
-    <h1>{% block heading %}Cloud Project{% endblock %}</h1>
-    <div class="sub">{% block subheading %}{% endblock %}</div>
+    <div class="header-top">
+      <div>
+        <h1>{% block heading %}Cloud Project{% endblock %}</h1>
+        <div class="sub">{% block subheading %}{% endblock %}</div>
+      </div>
+      <nav class="main-nav">
+        <a href="/" class="nav-link {% block nav_home %}{% endblock %}">Dashboard</a>
+        <a href="/compare/" class="nav-link {% block nav_compare %}{% endblock %}">Compare</a>
+      </nav>
+    </div>
   </header>
 
   {% block content %}{% endblock %}

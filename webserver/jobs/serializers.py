@@ -7,8 +7,9 @@ They handle data serialization for outgoing responses, validation, and deseriali
 class JobSerializer(serializers.ModelSerializer):
     """Complete serializer,it's used mainly when we want to retrieve all the job info with a GET request"""
 
-    duration_s = serializers.SerializerMethodField()
-    live       = serializers.SerializerMethodField()
+    duration_s       = serializers.SerializerMethodField()
+    execution_time_s = serializers.SerializerMethodField()
+    live             = serializers.SerializerMethodField()
 
     class Meta:
         model = Job
@@ -34,7 +35,11 @@ class JobSerializer(serializers.ModelSerializer):
 
 
     def get_duration_s(self, obj):
-        """it calculates the duration of the job if it's completed"""
+        if obj.submitted_at and obj.completed_at:
+            return round((obj.completed_at - obj.submitted_at).total_seconds(), 2)
+        return None
+
+    def get_execution_time_s(self, obj):
         if obj.started_at and obj.completed_at:
             return round((obj.completed_at - obj.started_at).total_seconds(), 2)
         return None
@@ -77,7 +82,8 @@ class JobCreateSerializer(serializers.ModelSerializer):
 class JobStatusSerializer(serializers.ModelSerializer):
     """Lightweight serializer,it's used for polling the job status"""
 
-    live = serializers.SerializerMethodField()
+    execution_time_s = serializers.SerializerMethodField()
+    live             = serializers.SerializerMethodField()
 
     class Meta:
         model = Job
@@ -93,6 +99,11 @@ class JobStatusSerializer(serializers.ModelSerializer):
             'error_msg',
             'live',
         ]
+
+    def get_execution_time_s(self, obj):
+        if obj.started_at and obj.completed_at:
+            return round((obj.completed_at - obj.started_at).total_seconds(), 2)
+        return None
 
     def get_live(self, obj):
         if obj.status == Job.Status.RUNNING and obj.yarn_app_id:

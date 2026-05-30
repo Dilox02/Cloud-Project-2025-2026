@@ -81,9 +81,14 @@ async function refreshJobs() {
       return;
     }
     const rows = jobs.map(j => {
-      const done = j.status === 'completed';
-      const url   = done ? `/api/jobs/${j.id}/` : `/api/jobs/${j.id}/status/`;
-      const label = done ? 'Get' : 'Status';
+      const done     = j.status === 'completed';
+      const url      = done ? `/api/jobs/${j.id}/` : `/api/jobs/${j.id}/status/`;
+      const label    = done ? 'Get' : 'Status';
+      const execTime = j.execution_time_s != null ? fmtDuration(j.execution_time_s) : '—';
+      const wallTime = j.duration_s       != null ? fmtDuration(j.duration_s)       : '—';
+      const memory   = j.peak_memory_mb   != null ? j.peak_memory_mb.toFixed(0) + ' MB' : '—';
+      const tput     = (j.dataset_size_mb && j.execution_time_s)
+                       ? (j.dataset_size_mb / j.execution_time_s).toFixed(2) + ' MB/s' : '—';
       return `
       <tr>
         <td><code>#${j.id}</code></td>
@@ -92,8 +97,10 @@ async function refreshJobs() {
         <td>ws=${j.window_size}, ${j.engine === 'spark' ? 'p' : 'r'}=${j.num_reducers}</td>
         <td><span class="status status-${j.status}">${j.status}</span></td>
         <td>${renderProgress(j.live)}</td>
-        <td class="mono">${j.yarn_app_id || '—'}</td>
-        <td>${fmtDuration(j.duration_s)}</td>
+        <td class="mono-metric">${wallTime}</td>
+        <td class="mono-metric">${execTime}</td>
+        <td class="mono-metric">${memory}</td>
+        <td class="mono-metric">${tput}</td>
         <td><a class="job-btn" href="${url}" target="_blank">${label}</a></td>
       </tr>`;
     }).join('');
@@ -102,7 +109,12 @@ async function refreshJobs() {
         <thead>
           <tr>
             <th>ID</th><th>Engine</th><th>Corpus</th><th>Params</th><th>Status</th>
-            <th>Progress</th><th>YARN app</th><th>Duration</th><th></th>
+            <th>Progress</th>
+            <th class="mono-metric">Wall time</th>
+            <th class="mono-metric">Compute time</th>
+            <th class="mono-metric">Avg mem</th>
+            <th class="mono-metric">Throughput</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>

@@ -103,6 +103,8 @@ def submit_and_wait(job: Job) -> None:
             job.output_hdfs_path = f"{output_base}/pmi_output"
             job.save(update_fields=['status', 'completed_at', 'output_hdfs_path'])
             logger.info("Job #%d COMPLETED (last YARN app: %s)", job.id, last_app_id)
+            from .yarn_monitor import sync_job_from_yarn
+            sync_job_from_yarn(job)
             return
 
         local_error = ''.join(log_tail).strip()[-2000:] or (
