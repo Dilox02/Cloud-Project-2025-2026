@@ -201,6 +201,16 @@ def sync_job_from_yarn(job: Job):
     if is_hadoop and new_status == Job.Status.COMPLETED and yarn_name != 'PMI Computation':
         new_status = Job.Status.RUNNING
 
+    # Stamp started_at the first time YARN reports the app actually RUNNING, so
+    # compute time (started_at -> completed_at) measures real cluster execution and
+    # wall time (submitted_at -> completed_at) additionally captures the YARN queue
+    # wait and ApplicationMaster startup. The conditional UPDATE (started_at IS NULL)
+    # makes this idempotent and race-safe against the execution thread's stale copy.
+    if not job.started_at and yarn_state == 'RUNNING':
+        ts = timezone.now()
+        if Job.objects.filter(pk=job.pk, started_at__isnull=True).update(started_at=ts):
+            job.started_at = ts
+
     if job.status != new_status:
         job.status = new_status
         update_fields.add('status')
@@ -212,6 +222,13 @@ def sync_job_from_yarn(job: Job):
         if new_status == Job.Status.COMPLETED and not job.output_hdfs_path:
             job.output_hdfs_path = f"{settings.HDFS_OUTPUT_BASE}/job_{job.id}/pmi_output"
             update_fields.add('output_hdfs_path')
+
+    # Safety net: a job fast enough to never be polled while RUNNING still needs a
+    # started_at, otherwise execution_time_s would stay null. Same race-safe pattern.
+    if new_status in (Job.Status.COMPLETED, Job.Status.FAILED) and not job.started_at:
+        ts = job.completed_at or timezone.now()
+        if Job.objects.filter(pk=job.pk, started_at__isnull=True).update(started_at=ts):
+            job.started_at = ts
 
     # On completion, fold the final stage's metrics and seal the values.
     if new_status == Job.Status.COMPLETED:

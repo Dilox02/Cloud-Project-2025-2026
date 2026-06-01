@@ -82,10 +82,10 @@ def submit_and_wait(job: Job) -> None:
     """
     output_base = f"{settings.HDFS_OUTPUT_BASE}/job_{job.id}"
 
-    # 1. Set job status to RUNNING at startup
+    # 1. Set job status to RUNNING at startup. started_at is stamped later by the
+    # poller, when YARN first reports the app RUNNING (see sync_job_from_yarn).
     job.status = Job.Status.RUNNING
-    job.started_at = timezone.now()
-    job.save(update_fields=['status', 'started_at'])
+    job.save(update_fields=['status'])
     logger.info("Job #%d started (engine=spark, dataset=%s)", job.id, job.dataset_path)
 
     log_tail: list = []

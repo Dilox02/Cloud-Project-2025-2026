@@ -57,9 +57,11 @@ def submit_and_wait(job: Job) -> None:
     """
     output_base = f"{settings.HDFS_OUTPUT_BASE}/job_{job.id}"
 
+    # started_at is stamped later by the poller, when YARN first reports the app
+    # RUNNING (see sync_job_from_yarn). Here we only mark the job as RUNNING so it
+    # surfaces in the dashboard and gets picked up by the poller.
     job.status = Job.Status.RUNNING
-    job.started_at = timezone.now()
-    job.save(update_fields=['status', 'started_at'])
+    job.save(update_fields=['status'])
     logger.info(
         "Job #%d started (engine=%s, dataset=%s)",
         job.id, job.engine, job.dataset_path,
