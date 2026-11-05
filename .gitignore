@@ -42,3 +42,17 @@ build/
 
 # Django initial migrations
 **/migrations/0001_initial.py
+
+# Secrets and local state
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+id_rsa*
+id_ed25519*
+*.sqlite3
+*.sqlite3-*
